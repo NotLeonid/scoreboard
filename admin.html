@@ -1,0 +1,124 @@
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Scoreboard control</title>
+<style>
+*{outline:none;scroll-behavior:smooth;transition:.3s;}
+body{background-color:#222831;color:#eeeeee;font-family:arial;margin:0;margin:0;display:flex;flex-direction:column;height:100%;}
+#topInfo{text-align:center;margin:0.9em;}
+#topInfo input{margin-bottom:.5rem;font-size:2rem;padding:13px;}
+table{background-color:#393e46;padding:20px;border:#eeeeee solid 3px;border-radius:5px;margin:20px;}
+table td{border:3px solid #eeeeee;padding:1em;}
+table tr:first-child td:first-child{border-top-left-radius:5px;}
+table tr:first-child td:last-child{border-top-right-radius:5px;}
+table tr:last-child td:last-child{border-bottom-right-radius:5px;}
+table tr:last-child td:first-child{border-bottom-left-radius:5px;}
+td.checked{background-color:#0a0;}
+td.unchecked{background-color:#a00;}
+input{background-color:#393e46;color:#eeeeee;padding:7px;border:#eeeeee 3px solid;border-radius:5px;}
+input:hover,td[contenteditable]:hover{border-color:#cb1c8d;}
+input:active,td[contenteditable]:active{background-color:#cb1c8d;transition:0s;}
+input[type="checkbox"]{width:100%;height:100%;}
+</style>
+</head>
+<body>
+<h1 id="topInfo">
+<input type="text" id="name" placeholder="Name">
+<input type="text" id="round" placeholder="Round" onkeydown="changeRound()">
+<input type="number" id="timerDuration" placeholder="Duration (seconds)" value="300" style="width:200px;">
+<input type="button" value="Start" onclick="timerStart()">
+<input type="button" value="Freeze" onclick="timerFreeze()">
+<input type="button" value="Clear" onclick="timerClear()">
+</h1>
+<table id="teams">
+<tr><th>Team name</th><th>Active</th><th>Next</th><th>Score</th></tr>
+</table>
+<script>
+document.querySelector("#name").addEventListener("keydown",e=>{
+if(e.keyCode!=13)return;
+socket.send(JSON.stringify({type:"change",name:"name",content:e.target.value}));
+});
+document.querySelector("#round").addEventListener("keydown",e=>{
+if(e.keyCode!=13)return;
+socket.send(JSON.stringify({type:"change",name:"round",content:e.target.value}));
+});
+function timerStart(){
+socket.send(JSON.stringify({type:"timer",action:"start",content:new Date().getTime()+document.querySelector("#timerDuration").value*1000}));
+}
+function timerFreeze(){
+socket.send(JSON.stringify({type:"timer",action:"freeze",content:new Date().getTime()}));
+}
+function timerClear(){
+socket.send(JSON.stringify({type:"timer",action:"clear"}));
+}
+function activateTeam(id){
+socket.send(JSON.stringify({type:"team",action:"activate",content:id}));
+}
+function nextTeam(id){
+socket.send(JSON.stringify({type:"team",action:"next",content:id}));
+}
+function changeScore(id){
+if(event.keyCode!=13)return;
+var score=document.querySelector(`#teamScore-${id}`).innerText;
+socket.send(JSON.stringify({type:"team",action:"score",id:id,content:score}));
+event.preventDefault();
+}
+function renderTeams(){
+document.querySelector("#name").value=data.name;
+document.querySelector("#round").value=data.round;
+var teams=document.querySelector("#teams");
+let counter=0;
+data.teams.forEach(team=>{
+var a=document.createElement("h1");
+teams.appendChild(a);
+a.outerHTML=`
+<tr id="team-${counter}">
+<td class="teamName">${team.name}</td>
+<td class="${team.active?"checked":"unchecked"} active" onclick="activateTeam(${counter})"></td>
+<td class="${team.next?"checked":"unchecked"} next" onclick="nextTeam(${counter})"></td>
+<td contenteditable onkeydown="changeScore(${counter})" id="teamScore-${counter}">${team.score}</td>
+</tr>
+`;
+counter++;
+});
+}
+function updateTeams(){
+let counter=0;
+data.teams.forEach(team=>{
+document.querySelector(`#team-${counter} .teamName`).innerText=`${team.name}`;
+if(team.active){document.querySelector(`#team-${counter} .active`).classList.remove("unchecked");document.querySelector(`#team-${counter} .active`).classList.add("checked");}else{document.querySelector(`#team-${counter} .active`).classList.remove("checked");document.querySelector(`#team-${counter} .active`).classList.add("unchecked");}
+if(team.next){document.querySelector(`#team-${counter} .next`).classList.remove("unchecked");document.querySelector(`#team-${counter} .next`).classList.add("checked");}else{document.querySelector(`#team-${counter} .next`).classList.remove("checked");document.querySelector(`#team-${counter} .next`).classList.add("unchecked");}
+counter++;
+});
+}
+function pull(initial){
+if(!socket)return;
+if(!socket.readyState)return;
+if(socket.readyState!==WebSocket.OPEN)return;
+socket.send(JSON.stringify({type:"get",initial:initial}));
+setTimeout(pull,1000);
+}
+
+var data="";
+var socket;
+function connect(){
+socket=new WebSocket("ws://"+location.host);
+socket.addEventListener("open",()=>{pull(true)});
+socket.addEventListener("close",()=>{setTimeout(connect,1000)});
+socket.addEventListener("message",message=>{
+message=JSON.parse(message.data);
+if(message.type=="scores"){
+data=JSON.parse(message.content);
+if(message.initial){
+renderTeams();
+}else{
+updateTeams();
+}
+}
+});
+}
+connect();
+</script>
+<h5 style="font-family:verdana;position:fixed;bottom:10px;right:10px;margin:0;background-color:#222;border-radius:5px;padding:5px 5px 5px 8px;border:white solid 1px;opacity:.6;z-index:999;pointer-events:none;">Made by NotLeonid ✨</h5>
+</body>
+</html>

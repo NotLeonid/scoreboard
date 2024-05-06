@@ -5,7 +5,6 @@
 <style>
 *{outline:none;scroll-behavior:smooth;transition:1s;}
 body{background-color:#222831;color:#eeeeee;font-family:arial;margin:0;display:flex;flex-direction:column;height:100%;}
-div{}
 #topInfo{text-align:center;margin:0.9em;}
 #topInfo span{padding:13px;border:#cb1c8d 3px solid;border-radius:5px;background-color:#393e46;}
 #teams{padding:20px;flex:1;display:flex;flex-direction:column;}
@@ -17,7 +16,11 @@ div{}
 .team .count{padding:0.3em;margin:auto;width:80px;text-align:center;}
 .team.highlighted .score .progress{background-color:#cb1c8d;}
 .team.highlighted img{background-color:#cb1c8d;}
+/* .team.next .score .progress{background-color:#33dd33;} */
+.team.next img{box-shadow:inset 0px 0px 0px .3rem #33dd33;}
 .team.inactive{opacity:.2;}
+.team .name{white-space:nowrap;margin:0;margin-left:.3rem;margin-top:.3rem;color:#eeeeee;float:left;-webkit-text-stroke:1px #393e46;}
+.team .name span{color:#33dd33;font-size:.7em;}
 </style>
 </head>
 <body>
@@ -28,7 +31,11 @@ div{}
 </h1>
 <div id="teams"><center><h1>Connecting...</h1></center></div>
 <script>
-function secToTime(secs){
+function secToTime(secs,exceedToNegatives){
+var negative=false;
+if(secs<0){
+exceedToNegatives?negative=true:secs=0;
+}
 secs=Math.round(Math.abs(secs));
 var days=Math.floor(secs/(60*60*24));
 var h=secs%(60*60*24);
@@ -42,7 +49,7 @@ if(days>0)time+=`${days}:`;
 if(hours>0)time+=`${hours}:`;
 time+=`${minutes>9?minutes:`0${minutes}`}:`;
 time+=`${seconds>9?seconds:`0${seconds}`}`;
-return time.trim();
+return `${negative?"-":""}${time.trim()}`;
 }
 function updateTimers(){
 if(!socket)return;
@@ -51,13 +58,14 @@ if(socket.readyState!==WebSocket.OPEN)return;
 var timer=document.querySelector("#timer");
 var round=document.querySelector("#round");
 var nname=document.querySelector("#name");
+
 if(data.timer.frozenAt!==-1){
-timer.innerText=`${secToTime(data.timer.frozenAt/1000)}`;
+timer.innerText=`${secToTime((data.timer.until-data.timer.frozenAt)/1000,data.timer.exceedToNegatives)}`;
 }else{
-if(data.timer.from===-1){
-timer.innerText=`0:00`;
+if(data.timer.until===-1){
+timer.innerText=`00:00`;
 }else{
-timer.innerText=`${secToTime((new Date().getTime()-data.timer.from)/1000)}`;
+timer.innerText=`${secToTime((data.timer.until-new Date().getTime())/1000,data.timer.exceedToNegatives)}`;
 }
 }
 round.innerText=`${data.round}`;
@@ -65,21 +73,21 @@ nname.innerText=`${data.name}`;
 setTimeout(updateTimers,1000);
 }
 function getScorePercentage(data,counter){
-var scores=data.teams.map(team=>team.score);
-var sortedScores=data.teams.map(team=>team.score);
+var scores=data.teams.map(team=>eval(team.score));
+var sortedScores=data.teams.map(team=>eval(team.score));
 sortedScores.sort(function(a,b){return b-a});
 var total=scores.reduce(function(a,b){return a+b});
-return(100/(sortedScores[0]>0?sortedScores[0]:1)*scores[counter]);
+return(100/(sortedScores[0]>0?sortedScores[0]:1)*(scores[counter]<0?0:scores[counter]));
 }
 function getOrderIndex(counter){
-var scores=data.teams.map(team=>team.score);
+var scores=data.teams.map(team=>eval(team.score));
 scores.sort(function(a,b){return b-a});
 return(scores.indexOf(counter)+0);
 }
 function reorderTeams(){
 let counter=0;
 data.teams.forEach(team=>{
-document.querySelector(`#team-${counter}`).style.order=getOrderIndex(team.score);
+document.querySelector(`#team-${counter}`).style.order=getOrderIndex(eval(team.score));
 counter++;
 });
 }
@@ -87,9 +95,11 @@ function updateTeams(){
 let counter=0;
 data.teams.forEach(team=>{
 document.querySelector(`#team-${counter} .progress`).style.width=`${getScorePercentage(data,counter)}%`;
-document.querySelector(`#team-${counter} .count`).innerText=team.score;
+document.querySelector(`#team-${counter} .count`).innerText=eval(team.score);
 if(team.active){document.querySelector(`#team-${counter}`).classList.remove("inactive");}else{document.querySelector(`#team-${counter}`).classList.add("inactive");}
-if(team.next){document.querySelector(`#team-${counter}`).classList.add("highlighted");}else{document.querySelector(`#team-${counter}`).classList.remove("highlighted");}
+if(team.highlighted){document.querySelector(`#team-${counter}`).classList.add("highlighted");}else{document.querySelector(`#team-${counter}`).classList.remove("highlighted");}
+if(team.next){document.querySelector(`#team-${counter}`).classList.add("next");}else{document.querySelector(`#team-${counter}`).classList.remove("next");}
+document.querySelector(`#team-${counter} .name`).innerHTML=`${team.name}${team.next?` (<span>NEXT</span>)`:""}`;
 counter++;
 });
 reorderTeams();
@@ -104,8 +114,8 @@ teams.appendChild(a);
 a.outerHTML=`
 <div class="team" id="team-${counter}">
 <img src="${team.icon}">
-<div class="score"><div class="progress" style="width:0%"></div></div>
-<h1 class="count">${team.score}</h1>
+<div class="score"><div class="progress" style="width:0%"><h1 class="name">${team.name}</h1></div></div>
+<h1 class="count">${eval(team.score)}</h1>
 </div>
 `;
 counter++;
@@ -140,6 +150,6 @@ updateTeams();
 }
 connect();
 </script>
-<h5 style="font-family:verdana;position:fixed;bottom:10px;right:10px;margin:0;background-color:#222;border-radius:5px;padding:5px 5px 5px 8px;border:white solid 1px;opacity:.6;z-index:999;pointer-events:none;">Made by NotLeonid 😘</h5>
+<h5 style="font-family:verdana;position:fixed;bottom:10px;right:10px;margin:0;background-color:#222;border-radius:5px;padding:5px 5px 5px 8px;border:white solid 1px;opacity:.6;z-index:999;pointer-events:none;">Made by NotLeonid ✨</h5>
 </body>
 </html>
